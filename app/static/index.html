@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tundla Junction — Live Trains</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 12px; color: #cbd5e1; }
+  .sub { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+  section {
+    background: #131c30;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 20px;
+  }
+  button {
+    font-size: 15px;
+    font-weight: 600;
+    padding: 11px 18px;
+    border: 0;
+    border-radius: 10px;
+    background: #38bdf8;
+    color: #082f49;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: progress; }
+  input {
+    font-size: 15px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    background: #0b1220;
+    color: #e2e8f0;
+    width: 160px;
+    font-variant-numeric: tabular-nums;
+  }
+  input:focus { outline: 2px solid #38bdf8; border-color: transparent; }
+  #fullFilter { width: 260px; }
+  .dl { color: #7dd3fc; font-size: 13px; }
+  .dl:hover { text-decoration: underline; }
+  .chk { font-size: 13px; color: #94a3b8; display: flex; align-items: center; gap: 6px; }
+  .grp { font-size: 13px; margin: 18px 0 6px; color: #cbd5e1; letter-spacing: .03em; }
+  .hint { font-size: 12px; color: #94a3b8; margin: 8px 0; }
+  button.ghost { background: #1e293b; border-color: #334155; color: #cbd5e1; }
+  select { background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
+           border-radius: 8px; padding: 9px 10px; font: inherit; font-size: 14px; }
+  .gate { font-size: 12px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .gate.pass { background: #14532d; color: #bbf7d0; }
+  .gate.drop { background: #7f1d1d; color: #fecaca; }
+  tr.row-live { background: rgba(56, 189, 248, 0.10); }
+  tr.row-cache { opacity: 0.62; }
+  tr.row-cache:hover { opacity: 1; background: rgba(148, 163, 184, 0.08); }
+  tr.row-next { opacity: 0.45; font-style: italic; }
+  tr.row-next:hover { opacity: 0.9; }
+  .tick { color: #7dd3fc; font-weight: 600; }
+  .tick.stale { color: #fbbf24; }
+  .bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .status { font-size: 13px; color: #94a3b8; }
+  .error { color: #fca5a5; font-size: 14px; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1e293b; }
+  th { color: #94a3b8; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tr:hover td { background: #1e293b55; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; background: #334155; color: #e2e8f0; }
+  .at-station, .arrived { background: #14532d; color: #86efac; }
+  .upcoming, .running  { background: #1e3a8a; color: #93c5fd; }
+  .departed            { background: #334155; color: #cbd5e1; }
+  .scheduled           { background: #3f3f46; color: #e4e4e7; }
+  .late { color: #fca5a5; font-weight: 600; }
+  .ontime { color: #86efac; }
+  .num { font-variant-numeric: tabular-nums; color: #cbd5e1; }
+  .muted { color: #94a3b8; }
+  .card-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .card-head .title { font-size: 17px; font-weight: 700; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .kv { background: #0b1220; border: 1px solid #1e293b; border-radius: 10px; padding: 10px 12px; }
+  .kv .k { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; }
+  .kv .v { font-size: 15px; margin-top: 4px; }
+  .exceptions { margin-top: 14px; }
+  .exception { color: #fdba74; font-size: 13px; padding: 8px 10px; background: #2a1e0b; border-radius: 8px; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <h1>Tundla Junction (TDL) — Live Trains</h1>
+  <div class="sub">Live arrivals &amp; departures straight from RailRadar</div>
+
+  <section>
+    <h2>MVIS &mdash; wheel-sensor detection</h2>
+    <div class="bar">
+      <button id="mvisSim">Simulate train passing</button>
+      <button id="mvisPoll" class="ghost">Refresh now</button>
+      <label class="chk"><input type="checkbox" id="mvisAuto" checked /> auto-follow</label>
+      <label class="chk"><input type="checkbox" id="mvisDemo" /> demo: next train</label>
+      <span class="status" id="mvisStatus">Waiting for a wheel-sensor event</span>
+    </div>
+    <div class="hint" id="mvisRule">&mdash;</div>
+    <div class="bar">
+      <label class="chk">Axles <input type="number" id="mvisAxles" value="72" min="0" max="200" style="width:80px" /></label>
+      <label class="chk">Point
+        <select id="mvisPoint" style="width:110px"></select>
+      </label>
+      <span class="status">Any number &mdash; try 40 (goods) or 140 (faulty) to see the gate close.</span>
+    </div>
+    <div class="error" id="mvisError"></div>
+    <div id="mvisResult"></div>
+  </section>
+
+  <section>
+    <h2>Tundla &rarr; Mitawali (west side)</h2>
+    <div class="bar">
+      <button id="goRoute">Get route trains</button>
+      <a class="dl" href="/api/route/timetable.csv">Download route CSV</a>
+      <label class="chk"><input type="checkbox" id="routeAll" /> show all 136</label>
+      <span class="status" id="routeStatus">Live trains on Tundla &rarr; Mitawali, grouped</span>
+    </div>
+    <div class="error" id="routeError"></div>
+    <div id="routeResult"></div>
+  </section>
+
+  <section>
+    <h2>Train number lookup</h2>
+    <div class="bar">
+      <input id="trainNo" type="text" inputmode="numeric" placeholder="e.g. 12002" maxlength="5" />
+      <button id="goTrain">Get train status</button>
+      <span class="status" id="trainStatus">Enter a train number</span>
+    </div>
+    <div class="error" id="trainError"></div>
+    <div id="trainResult"></div>
+  </section>
+
+  <section>
+    <h2>Next 5 trains from now</h2>
+    <div class="bar">
+      <button id="goNext">Get next 5 trains</button>
+      <a class="dl" href="/api/timetable.csv">Download full CSV</a>
+      <span class="status" id="nextStatus">Complete Tundla list — arrived / departed / upcoming</span>
+    </div>
+    <div class="error" id="nextError"></div>
+    <div id="nextResult"></div>
+  </section>
+
+  <section>
+    <h2>Tundla live &mdash; Tundla &rarr; Mitawali trains only</h2>
+    <div class="bar">
+      <button id="go">Get live updates</button>
+      <span class="status" id="status">Not fetched yet</span>
+    </div>
+    <div class="error" id="error"></div>
+    <div id="result"></div>
+  </section>
+
+  <section>
+    <h2>Every train through Tundla (full day)</h2>
+    <div class="bar">
+      <button id="goFull">Get full-day list</button>
+      <input id="fullFilter" type="search" placeholder="Filter number / name / station" />
+      <span class="status" id="fullStatus">Every train halting or passing TDL today — nothing missed</span>
+      <span class="status" id="fullCount"></span>
+    </div>
+    <div class="error" id="fullError"></div>
+    <div id="fullResult"></div>
+  </section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const go = $("go"), status = $("status"), error = $("error"), result = $("result");
+const goTrain = $("goTrain"), trainNo = $("trainNo"), trainStatus = $("trainStatus");
+const trainError = $("trainError"), trainResult = $("trainResult");
+const goNext = $("goNext"), nextStatus = $("nextStatus"), nextError = $("nextError"), nextResult = $("nextResult");
+const goFull = $("goFull"), fullFilter = $("fullFilter"), fullStatus = $("fullStatus");
+const fullError = $("fullError"), fullResult = $("fullResult"), fullCount = $("fullCount");
+const goRoute = $("goRoute"), routeStatus = $("routeStatus"), routeError = $("routeError"), routeResult = $("routeResult");
+const routeAll = $("routeAll");
+
+const mvisSim = $("mvisSim"), mvisPoll = $("mvisPoll"), mvisAuto = $("mvisAuto");
+const mvisStatus = $("mvisStatus"), mvisError = $("mvisError"), mvisResult = $("mvisResult");
+const mvisAxles = $("mvisAxles"), mvisPoint = $("mvisPoint"), mvisDemo = $("mvisDemo");
+const mvisRule = $("mvisRule");
+
+let mvisCfg = null;
+
+/* ---------- MVIS ---------- */
+function mvisTrackTable(body) {
+  const trains = body.trains || [];
+  const s = body.stats || {};
+  const focus = body.focus;
+  const stamp = `<div class="hint">
+      queue <b>${trains.length}/${body.trackSize ?? 5}</b> ·
+      following <b>${focus || "—"}</b> ·
+      events ${s.events || 0} · accepted ${s.accepted || 0} ·
+      rejected (axles) ${s.rejectedAxles || 0} · unresolved ${s.unresolved || 0} ·
+      rotated out ${s.rotatedOut || 0} ·
+      API calls ${s.apiCalls || 0}${s.refreshErrors ? ` · refresh errors ${s.refreshErrors}` : ""} ·
+      <span id="mvisClock">${new Date().toLocaleTimeString()}</span>
+      ${body.pollerRunning ? `<span class="badge at-station">polling ${focus || "—"} every ${body.pollSeconds ?? 10}s</span>` : ""}
+    </div>`;
+  if (!trains.length) {
+    return `<p class="status">No trains yet. Simulate a passing train, or wait for the wheel sensor.</p>${stamp}`;
+  }
+  const rows = trains.map((t) => {
+    const live = t.number === focus;
+    const detected = t.state === "detected";
+    const tag = live
+      ? ' <span class="badge at-station">LIVE</span>'
+      : detected
+        ? ' <span class="badge departed">tracked</span>'
+        : ' <span class="badge scheduled">next</span>';
+    const gone = t.passedMti ? ' <span class="badge departed">past MTI</span>' : "";
+    // "data age" is how old RailRadar says the data is - it is NOT a train time.
+    const age = t.refreshedAtEpoch ? `<span class="tick" data-epoch="${t.refreshedAtEpoch}">0s</span>` : "—";
+    const followed = live
+      ? `data ${age} old · <b>${t.polls}</b> polls`
+        + (t.segmentProgressPct != null ? ` · ${t.segmentProgressPct}% to MTI` : "")
+      : detected
+        ? `data ${t.staleSeconds}s old · ${t.polls} polls`
+        : `scheduled ${t.scheduledTime || ""}`;
+    return `<tr class="${live ? "row-live" : (detected ? "row-cache" : "row-next")}"
+                ${live ? "" : `data-focus="${t.number}" style="cursor:pointer"`}
+                title="${live ? "polled every " + (body.pollSeconds ?? 10) + "s — the timer is how old RailRadar's data is" : "click to follow this train"}">
+      <td class="num">${t.number}${tag}${gone}</td>
+      <td>${t.name || "—"}</td>
+      <td class="num">${t.axles ?? "—"}</td>
+      <td>${t.sensorPoint || "—"}</td>
+      <td class="muted">${t.identifiedBy || "—"}</td>
+      <td>${t.status ? `<span class="badge ${t.status}">${t.status}</span>` : "—"}</td>
+      <td>${delayCell(t.delayMinutes)}</td>
+      <td>${t.lastStationName || t.lastStation || "—"}</td>
+      <td>${t.nextStation || "—"}</td>
+      <td class="muted">${followed}</td>
+    </tr>`;
+  }).join("");
+  return `<table>
+    <thead><tr>
+      <th>Train</th><th>Name</th><th>Axles</th><th>Point</th><th>Identified by</th>
+      <th>Status</th><th>Delay</th><th>Last stop</th><th>Next stop</th><th>Data age / polls</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>${stamp}`;
+}
+
+/* Counts up every second from RailRadar's own lastUpdatedAt, so the number is
+   the true age of the data rather than the age of our cache entry. */
+function mvisTick() {
+  const now = Date.now() / 1000;
+  document.querySelectorAll(".tick[data-epoch]").forEach((el) => {
+    const epoch = Number(el.dataset.epoch);
+    if (!epoch) return;
+    const secs = Math.max(0, Math.round(now - epoch));
+    el.textContent = secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+    // Flag it when RailRadar itself is behind, so a stale upstream is not
+    // mistaken for a bug in our polling.
+    el.classList.toggle("stale", secs > 120);
+    el.title = secs > 120
+      ? "RailRadar has not updated this train for over 2 minutes - upstream lag, not our polling"
+      : "how old RailRadar's data is";
+  });
+  const clock = document.getElementById("mvisClock");
+  if (clock) clock.textContent = new Date().toLocaleTimeString();
+}
+setInterval(mvisTick, 1000);
+
+async function mvisFocus(number, el) {
+  mvisError.textContent = "";
+  try {
+    const body = await postJson(`/api/mvis/focus?number=${encodeURIComponent(number)}`, {});
+    mvisResult.innerHTML = mvisTrackTable(body);
+    mvisStatus.textContent = `Now following ${body.focus}`;
+  } catch (e) {
+    mvisError.textContent = "Failed to switch focus: " + e.message;
+  }
+}
+
+async function mvisLoadConfig() {
+  try {
+    const cfg = await getJson("/api/mvis/config");
+    mvisCfg = cfg;
+    mvisPoint.innerHTML = (cfg.sensorPoints || []).map((p) => `<option>${p}</option>`).join("");
+    mvisRule.textContent =
+      `Passenger band: ${cfg.axleMin}-${cfg.axleMax} axles - tracking up to ${cfg.trackSize} trains - ` +
+      `auto-refresh every ${cfg.pollSeconds}s`;
+    // Auto-follow is the default so the board visibly updates on its own. The
+    // server poller still has to be started once a train is being tracked.
+    mvisAuto.checked = true;
+    mvisStartDemoLoop();
+  } catch (e) {
+    mvisError.textContent = "Failed to load MVIS config: " + e.message;
+  }
+}
+
+async function mvisSimulate() {
+  mvisError.textContent = "";
+  mvisStatus.textContent = "Sensor fired…";
+  const axles = Number(mvisAxles.value || 72);
+  try {
+    const body = await postJson("/api/mvis/event", {
+      axles, point: mvisPoint.value, simulateNext: mvisDemo.checked,
+    });
+    const s = body.stats || {};
+    if (!body.accepted) {
+      mvisStatus.textContent = body.reason === "axles-out-of-band"
+        ? `Ignored: ${axles} axles is outside ${mvisCfg ? mvisCfg.axleMin + "–" + mvisCfg.axleMax : "64–100"} (not a passenger train)`
+        : `Nothing new to track at ${body.point || ""} — every train that has already left is on the board. `
+          + `Tick "demo: next train" to pick a different one.`;
+      if (body.reason === "axles-out-of-band") {
+        mvisResult.innerHTML =
+          `<p><span class="gate drop">GATE CLOSED</span> ${axles} axles → no API status call made.</p>`;
+      } else {
+        await mvisLoadTracked();
+      }
+    } else {
+      const t = body.train || {};
+      mvisStatus.textContent = `Detected ${t.number} (${t.axles} axles) via ${t.identifiedBy}`;
+      // Start the server-side poller so the live train's status is re-fetched
+      // (and `polls` increments) every interval, not just on this click.
+      await postJson("/api/mvis/poller?running=true", {});
+      mvisAuto.checked = true;
+      mvisStartDemoLoop();
+      await mvisLoadTracked();
+    }
+  } catch (e) {
+    mvisError.textContent = "Failed: " + e.message;
+    mvisStatus.textContent = "Error";
+  }
+}
+
+async function mvisLoadTracked() {
+  try {
+    const body = await getJson("/api/mvis/tracked");
+    mvisResult.innerHTML = mvisTrackTable(body);
+    if (mvisCfg && mvisCfg.pollerRunning !== body.pollerRunning) {
+      mvisCfg.pollerRunning = body.pollerRunning;
+      mvisAuto.checked = body.pollerRunning;
+    }
+  } catch (e) {
+    mvisError.textContent = "Failed to load tracked trains: " + e.message;
+  }
+}
+
+// click a cached row to make it the live one
+mvisResult.addEventListener("click", (e) => {
+  const row = e.target.closest("tr[data-focus]");
+  if (row) mvisFocus(row.dataset.focus, row);
+});
+
+/* Demo mode: repaint the board on every poll cycle so the table visibly
+   updates on its own, without the operator clicking anything. */
+let mvisDemoTimer = null;
+function mvisStartDemoLoop() {
+  mvisStopDemoLoop();
+  const secs = mvisCfg && mvisCfg.pollSeconds ? mvisCfg.pollSeconds : 10;
+  mvisDemoTimer = setInterval(mvisLoadTracked, secs * 1000);
+}
+function mvisStopDemoLoop() {
+  if (mvisDemoTimer) clearInterval(mvisDemoTimer);
+  mvisDemoTimer = null;
+}
+
+async function mvisRefresh() {
+  mvisError.textContent = "";
+  mvisStatus.textContent = "Refreshing…";
+  try {
+    const body = await postJson("/api/mvis/poll", {});
+    mvisResult.innerHTML = mvisTrackTable(body);
+    mvisStatus.textContent = `Refreshed ${body.refreshed} train(s)`;
+  } catch (e) {
+    mvisError.textContent = "Failed: " + e.message;
+    mvisStatus.textContent = "Error";
+  }
+}
+
+async function mvisSetPoller(on) {
+  try {
+    const body = await postJson(`/api/mvis/poller?running=${on}`, {});
+    mvisStatus.textContent = body.pollerRunning
+      ? `Auto-follow on — refreshing every ${mvisCfg ? mvisCfg.pollSeconds : 10}s`
+      : "Auto-follow off";
+    if (body.pollerRunning) mvisStartDemoLoop();
+    else mvisStopDemoLoop();
+  } catch (e) {
+    mvisError.textContent = "Failed: " + e.message;
+  }
+}
+
+function timeOnly(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? "—" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function place(value) {
+  if (!value) return "—";
+  if (typeof value === "string") return value;
+  return value.name || value.code || "—";
+}
+
+function delayCell(delay) {
+  if (delay === null || delay === undefined) return "—";
+  return delay > 0 ? `<span class="late">+${delay} min</span>` : `<span class="ontime">on time</span>`;
+}
+
+async function getJson(url) {
+  const res = await fetch(url);
+  const text = await res.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(text.slice(0, 200) || `HTTP ${res.status}`);
+  }
+  if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+  return body;
+}
+
+async function postJson(url, payload) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+  const text = await res.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(text.slice(0, 200) || `HTTP ${res.status}`);
+  }
+  if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+  return body;
+}
+
+/* ---------- all trains at Tundla ---------- */
+function renderBoard(data) {
+  const trains = data.trains || [];
+  if (!trains.length) {
+    result.innerHTML = `<p class="status">No trains in the current window.</p>`;
+    return;
+  }
+  const rows = trains.map((t) => {
+    const live = t.live || {}, train = t.train || {}, stop = t.stop || {};
+    const arr = timeOnly(live.expectedArrivalTime);
+    const dep = timeOnly(live.expectedDepartureTime);
+    return `<tr>
+      <td class="num">${train.number || ""}</td>
+      <td>${train.name || ""}</td>
+      <td>${place(train.source)} → ${place(train.destination)}</td>
+      <td>${arr !== "—" ? arr : (stop.arrival || "—")}</td>
+      <td>${dep !== "—" ? dep : (stop.departure || "—")}</td>
+      <td>${delayCell(live.delayMinutes)}</td>
+      <td>${live.platform || "—"}</td>
+      <td><span class="badge ${live.type || "scheduled"}">${live.type || "scheduled"}</span></td>
+    </tr>`;
+  }).join("");
+  result.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Train</th><th>Name</th><th>Route</th><th>Arr</th><th>Dep</th><th>Delay</th><th>Plf</th><th>Status</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/* ---------- single train ---------- */
+function renderTrain(data) {
+  const train = data.train || {};
+  const cur = data.currentLocation || {};
+  const next = data.nextHalt || {};
+  const prev = data.previousHalt || {};
+  const name = data.trainName || train.name || "";
+  const status = data.status || cur.status || "unknown";
+
+  const kv = (k, v) => `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+
+  const progress = (cur.segmentProgress !== null && cur.segmentProgress !== undefined)
+    ? Math.round(cur.segmentProgress * 100) + "%" : "—";
+  const speed = (cur.speedKmh !== null && cur.speedKmh !== undefined) ? cur.speedKmh + " km/h" : "—";
+
+  const exceptions = (data.exceptions || [])
+    .map((e) => `<div class="exception">${e.type ? e.type + ": " : ""}${e.message || ""}</div>`)
+    .join("");
+
+  trainResult.innerHTML = `
+    <div class="card-head">
+      <span class="title">${data.trainNumber || train.number || ""} ${name}</span>
+      <span class="badge ${status}">${status}</span>
+      <span class="status">${delayCell(data.delayMinutes)}</span>
+    </div>
+    <div class="grid">
+      ${kv("Route", `${place(train.source)} → ${place(train.destination)}`)}
+      ${kv("Type", train.type || "—")}
+      ${kv("Current station", `${cur.stationCode || "—"} <span class="muted">(${cur.status || "—"})</span>`)}
+      ${kv("Speed", speed)}
+      ${kv("Segment progress", progress)}
+      ${kv("Previous halt", prev.stationName || prev.stationCode || "—")}
+      ${kv("Next halt", next.stationName || next.stationCode || "—")}
+      ${kv("Distance to next", next.distance !== undefined && next.distance !== null ? next.distance + " km" : "—")}
+      ${kv("Start date", data.startDate || "—")}
+      ${kv("Last updated", timeOnly(data.lastUpdatedAt))}
+    </div>
+    ${exceptions ? `<div class="exceptions">${exceptions}</div>` : ""}`;
+}
+
+/* ---------- next N trains from the timetable ---------- */
+function renderNext(body) {
+  const trains = body.trains || [];
+  if (!trains.length) {
+    nextResult.innerHTML = `<p class="status">No trains found for now.</p>`;
+    return;
+  }
+  const rows = trains.map((t) => {
+    const badge = t.status
+      ? `<span class="badge ${t.status}">${t.status}</span>`
+      : `<span class="muted">outside window</span>`;
+    return `<tr>
+      <td class="num">${t.number}</td>
+      <td>${t.scheduled}</td>
+      <td>${t.name || "—"}</td>
+      <td>${badge}</td>
+      <td>${delayCell(t.delayMinutes)}</td>
+      <td>${t.platform || "—"}</td>
+      <td>${timeOnly(t.expectedArrival)}</td>
+      <td>${timeOnly(t.expectedDeparture)}</td>
+    </tr>`;
+  }).join("");
+  nextResult.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Train</th><th>Sched</th><th>Name</th><th>At Tundla</th><th>Delay</th><th>Plf</th><th>ETA</th><th>ETD</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/* ---------- every train through the station (full day) ---------- */
+function applyFullFilter() {
+  const q = (fullFilter.value || "").trim().toLowerCase();
+  const table = document.getElementById("fullTable");
+  if (!table) return;
+  let shown = 0, total = 0;
+  table.querySelectorAll("tbody tr").forEach((tr) => {
+    total++;
+    const match = !q || tr.textContent.toLowerCase().includes(q);
+    tr.style.display = match ? "" : "none";
+    if (match) shown++;
+  });
+  fullCount.textContent = q ? `${shown} of ${total}` : "";
+}
+
+function renderStationTrains(body) {
+  const data = body.data || {};
+  const trains = data.trains || [];
+  if (!trains.length) {
+    fullResult.innerHTML = `<p class="status">No trains returned.</p>`;
+    return;
+  }
+  const rows = trains.map((t) => {
+    const train = t.train || {}, stop = t.stop || {};
+    return `<tr>
+      <td class="num">${train.number || ""}</td>
+      <td>${train.name || ""}</td>
+      <td>${place(train.source)} → ${place(train.destination)}</td>
+      <td>${stop.arrival || "—"}</td>
+      <td>${stop.departure || "—"}</td>
+      <td>${train.type || "—"}</td>
+      <td class="muted">${stop.stopType || ""}</td>
+    </tr>`;
+  }).join("");
+  fullResult.innerHTML = `
+    <table id="fullTable">
+      <thead><tr>
+        <th>Train</th><th>Name</th><th>Route</th><th>Arr</th><th>Dep</th><th>Type</th><th>Stop</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  const station = place((data.station || {}).name) || "Tundla";
+  fullStatus.textContent = `${station} · ${trains.length} trains (full day)${body.cached ? " · cached" : ""}`;
+  applyFullFilter();
+}
+
+async function fetchStationTrains() {
+  goFull.disabled = true;
+  fullError.textContent = "";
+  fullStatus.textContent = "Fetching…";
+  try {
+    const body = await getJson("/api/station/trains");
+    renderStationTrains(body);
+  } catch (e) {
+    fullError.textContent = "Failed to fetch: " + e.message;
+    fullStatus.textContent = "Error";
+  } finally {
+    goFull.disabled = false;
+  }
+}
+
+/* ---------- Tundla -> Mitawali route (live only, grouped) ---------- */
+let routePayload = null;
+
+function routeTable(list) {
+  const rows = list.map((t) => {
+    const badge = t.status
+      ? `<span class="badge ${t.status}">${t.status}</span>`
+      : `<span class="muted">outside window</span>`;
+    return `<tr>
+      <td class="num">${t.number}</td>
+      <td>${t.name || "—"}</td>
+      <td class="muted">${t.type || ""}</td>
+      <td>${t.departure || "—"}</td>
+      <td>${badge}</td>
+      <td>${delayCell(t.delayMinutes)}</td>
+      <td>${t.platform || "—"}</td>
+      <td>${timeOnly(t.expectedArrival)}</td>
+      <td>${timeOnly(t.expectedDeparture)}</td>
+    </tr>`;
+  }).join("");
+  return `<table>
+    <thead><tr>
+      <th>Train</th><th>Name</th><th>Type</th><th>Dep TDL</th><th>At Tundla</th><th>Delay</th><th>Plf</th><th>ETA</th><th>ETD</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function setRouteStatus(body) {
+  const all = body.trains || [];
+  const live = all.filter((t) => t.status);
+  const came = live.filter((t) => t.status === "at-station").length;
+  const departed = live.filter((t) => t.status === "departed").length;
+  const coming = live.length - came - departed;
+  const from = (body.from || {}).code || "TDL";
+  const to = (body.to || {}).code || "MTI";
+  routeStatus.textContent =
+    `${from} → ${to} · live ${live.length}/${all.length} · came ${came} · departed ${departed} · coming ${coming}`;
+}
+
+function paintRoute() {
+  const body = routePayload || {};
+  const all = body.trains || [];
+
+  if (routeAll.checked) {
+    routeResult.innerHTML = all.length
+      ? routeTable(all)
+      : `<p class="status">No trains on this route.</p>`;
+    setRouteStatus(body);
+    return;
+  }
+
+  const live = all.filter((t) => t.status);
+  if (!live.length) {
+    routeResult.innerHTML = `<p class="status">No live trains on this route right now (nothing inside the 2h-back / 4h-ahead window).</p>`;
+    setRouteStatus(body);
+    return;
+  }
+
+  const groups = [
+    ["Came (at Tundla)", live.filter((t) => t.status === "at-station")],
+    ["Departed", live.filter((t) => t.status === "departed")],
+    [
+      "Coming",
+      live.filter((t) => t.status !== "at-station" && t.status !== "departed"),
+    ],
+  ];
+
+  routeResult.innerHTML = groups
+    .filter(([, list]) => list.length)
+    .map(([title, list]) => `<h3 class="grp">${title} <span class="muted">(${list.length})</span></h3>${routeTable(list)}`)
+    .join("");
+  setRouteStatus(body);
+}
+
+function renderRoute(body) {
+  routePayload = body;
+  paintRoute();
+}
+
+async function fetchRoute() {
+  goRoute.disabled = true;
+  routeError.textContent = "";
+  routeStatus.textContent = "Fetching…";
+  try {
+    const body = await getJson("/api/route/trains");
+    renderRoute(body);
+  } catch (e) {
+    routeError.textContent = "Failed to fetch: " + e.message;
+    routeStatus.textContent = "Error";
+  } finally {
+    goRoute.disabled = false;
+  }
+}
+
+async function fetchLive() {
+  go.disabled = true;
+  error.textContent = "";
+  status.textContent = "Fetching…";
+  try {
+    const body = await getJson("/api/live");
+    renderBoard(body.data);
+    const station = place((body.data.station || {}).name) || "Tundla Junction";
+    const scope = body.routeOnly ? `on route ${body.route}` : "all trains";
+    status.textContent = `${station} · ${(body.data.trains || []).length} trains · ${scope} · updated ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    error.textContent = "Failed to fetch: " + e.message;
+    status.textContent = "Error";
+  } finally {
+    go.disabled = false;
+  }
+}
+
+async function fetchTrain() {
+  const number = trainNo.value.trim();
+  trainError.textContent = "";
+  if (!number) {
+    trainError.textContent = "Enter a train number first.";
+    return;
+  }
+  goTrain.disabled = true;
+  trainStatus.textContent = "Fetching…";
+  try {
+    const body = await getJson(`/api/train/${encodeURIComponent(number)}`);
+    renderTrain(body.data);
+    trainStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    trainError.textContent = "Failed to fetch: " + e.message;
+    trainStatus.textContent = "Error";
+  } finally {
+    goTrain.disabled = false;
+  }
+}
+
+async function fetchNext() {
+  goNext.disabled = true;
+  nextError.textContent = "";
+  nextStatus.textContent = "Fetching…";
+  try {
+    const body = await getJson("/api/next");
+    renderNext(body);
+    nextStatus.textContent = `${body.weekday} ${body.now} · ${body.count} trains · source: ${body.source}`;
+  } catch (e) {
+    nextError.textContent = "Failed to fetch: " + e.message;
+    nextStatus.textContent = "Error";
+  } finally {
+    goNext.disabled = false;
+  }
+}
+
+goRoute.addEventListener("click", fetchRoute);
+routeAll.addEventListener("change", paintRoute);
+mvisSim.addEventListener("click", mvisSimulate);
+mvisPoll.addEventListener("click", mvisRefresh);
+mvisAuto.addEventListener("change", (e) => mvisSetPoller(e.target.checked));
+mvisDemo.addEventListener("change", async (e) => {
+  if (!e.target.checked) {
+    await mvisSetPoller(false);
+    mvisStopDemoLoop();
+  } else {
+    mvisStatus.textContent = "Demo mode on — press Simulate to fill the queue";
+  }
+});
+mvisLoadConfig();
+go.addEventListener("click", fetchLive);
+goTrain.addEventListener("click", fetchTrain);
+goNext.addEventListener("click", fetchNext);
+goFull.addEventListener("click", fetchStationTrains);
+fullFilter.addEventListener("input", applyFullFilter);
+trainNo.addEventListener("keydown", (e) => { if (e.key === "Enter") fetchTrain(); });
+</script>
+</body>
+</html>
